@@ -6,7 +6,18 @@
 // You can also run the tasks compileTypeScript, jsZip, and updateGrailsJs in isolation.
 
 // This build file requires a nodejs and tsc installation.
-
+//
+// To produce a webjar containing opendolphin.js:
+// Call:
+//   ../../gradlew jar
+// which will result in: build/libs/opendolphinjs-${version}.jar,
+// which can be installed to the local maven repository (~/.m2) by calling
+//   ../../gradlew -i publishToMavenLocal
+// To be able to upload it to bintray you need to be a member of the bintray-opendolphin organisation.
+// Then invoke:
+//   ../../gradlew -i bintrayUpload
+// and confirm the publishing notification on the bintray website.
+//
 
 buildscript {
     repositories {
@@ -17,11 +28,21 @@ buildscript {
 		}
     }
     dependencies {
-		classpath 'de.richsource.gradle.plugins:typescript-gradle-plugin:1.0.5'
+		classpath 'de.richsource.gradle.plugins:typescript-gradle-plugin:1.0.6'
     }
 }
-// Invoke the plugin
+
+plugins {
+    id "com.jfrog.bintray" version "1.0"
+}
+
 apply plugin: 'typescript'
+
+// used to produce webjar:
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+version = '0.12.0B2' // overwrite version here until we get a stable release
 
 task updateGrailsJs << {
     ant.delete dir: '../../dolphin-grails/web-app/js/dolphin'
@@ -59,3 +80,38 @@ compileTypeScript {
 }
 
 task install (dependsOn: [compileTypeScript, jsZip, updateGrailsJs])
+
+// ------------- Create webjar for OpenDolphinJS: --------------------
+jar {
+    dependsOn compileTypeScript
+    from(fileTree(dir: "${projectDir}/build", includes: ['*.js', '*.js.map'])) {
+        into "META-INF/resources/webjars/org/opendolphin/${version}"
+    }
+    baseName = 'opendolphinjs'
+    outputs.file archivePath
+}
+publishing {
+    publications {
+        mavenJavascript(MavenPublication) {
+            artifact jar {
+            }
+        }
+    }
+}
+
+// Please configure your personal bintray credentials via 'bintrayUser' and 'bintrayKey' in '~/.gradle/gradle.properties' to
+// be able execute the following task:
+bintray {
+    dryRun = false
+    user = project.hasProperty('bintrayUser') ? bintrayUser : '-'
+    key = project.hasProperty('bintrayKey') ? bintrayKey : '-'
+    publications = ['mavenJavascript']
+    pkg {
+        userOrg = 'opendolphin'
+        repo = 'mavenrepo'
+        name = 'open-dolphin-client-javascript'
+        licenses = ['Apache-2.0']
+    }
+}
+// ---------------------------------
+
